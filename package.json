@@ -1,14 +1,14 @@
 {
   "name": "multiplayer-shooter",
   "version": "1.0.0",
-  "description": "Multiplayer shooter game with WebSocket using Socket.IO",
+  "description": "Multiplayer shooter game with WebSocket",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "socket.io": "^4.8.1"
+    "ws": "^8.13.0"
   },
   "engines": {
     "node": "22.x"
