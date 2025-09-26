@@ -1,64 +1,75 @@
-import { Server } from "socket.io";
-import http from "http";
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
-const server = http.createServer();
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
+const PORT = process.env.PORT || 3000;
+
+// Serve static client files (put client.html and related files in "public/")
+app.use(express.static("public"));
+
+// Track players and bullets
 let players = {};
 let bullets = [];
 
-// 🎨 Random player color
-function getRandomColor() {
-  return "#" + Math.floor(Math.random() * 16777215).toString(16);
-}
-
+// New player joins
 io.on("connection", (socket) => {
-  const playerId = socket.id;
-  players[playerId] = { x: 100, y: 100, color: getRandomColor(), health: 100, alive: true };
+  console.log("A user connected:", socket.id);
+
+  players[socket.id] = {
+    x: 100,
+    y: 100,
+    color: getRandomColor(),
+    health: 100,
+    alive: true,
+  };
 
   // Send initial state
-  socket.emit("init", { id: playerId, players, bullets });
+  socket.emit("init", { id: socket.id, players, bullets });
+
+  // Broadcast to everyone that a new player joined
   io.emit("update", { players, bullets });
 
-  // Movement
+  // Handle player movement
   socket.on("move", (data) => {
-    if (players[playerId] && players[playerId].alive) {
-      players[playerId].x = data.x;
-      players[playerId].y = data.y;
-    }
+    if (!players[socket.id]?.alive) return;
+    players[socket.id].x = data.x;
+    players[socket.id].y = data.y;
+    io.emit("update", { players, bullets });
   });
 
-  // Shooting
+  // Handle shooting
   socket.on("shoot", (data) => {
-    if (players[playerId] && players[playerId].alive) {
-      bullets.push({
-        x: data.x,
-        y: data.y,
-        dx: data.dx,
-        dy: data.dy,
-        owner: playerId
-      });
-    }
+    if (!players[socket.id]?.alive) return;
+    bullets.push({
+      x: data.x,
+      y: data.y,
+      dx: data.dx,
+      dy: data.dy,
+      owner: socket.id,
+    });
   });
 
-  // Disconnect
+  // Handle disconnect
   socket.on("disconnect", () => {
-    delete players[playerId];
+    console.log("User disconnected:", socket.id);
+    delete players[socket.id];
     io.emit("update", { players, bullets });
   });
 });
 
-// Bullet physics & collision
+// Game loop for bullets
 setInterval(() => {
   bullets.forEach((bullet, index) => {
-    // ⚡ Faster bullets (match client speed = 15)
     bullet.x += bullet.dx;
     bullet.y += bullet.dy;
 
+    // Collision with players
     for (let id in players) {
-      if (id !== bullet.owner && players[id]?.alive) {
+      if (id !== bullet.owner && players[id].alive) {
         let p = players[id];
         if (
           bullet.x > p.x &&
@@ -84,10 +95,14 @@ setInterval(() => {
   });
 
   io.emit("update", { players, bullets });
-}, 60); // ~16 updates/sec (smoother)
- 
-// 🚀 Start server (Render/Heroku will set PORT)
-const PORT = process.env.PORT || 8080;
+}, 30);
+
+// Random color generator
+function getRandomColor() {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16);
+}
+
+// Start server
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
