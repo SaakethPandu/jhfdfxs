@@ -73,7 +73,7 @@ setInterval(() => {
       client.send(JSON.stringify({ type: "update", players, bullets }));
     }
   });
-}, 30);
+}, 60); // slower update rate for smoother movement
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
