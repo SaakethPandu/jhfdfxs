@@ -1,10 +1,8 @@
-import { Server } from "socket.io";
+import { WebSocketServer } from "ws";
 import http from "http";
 
 const server = http.createServer();
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const wss = new WebSocketServer({ server });
 
 let players = {};
 let bullets = [];
@@ -13,33 +11,35 @@ function getRandomColor() {
   return "#" + Math.floor(Math.random() * 16777215).toString(16);
 }
 
-io.on("connection", (socket) => {
-  const playerId = socket.id;
+wss.on("connection", (ws) => {
+  const playerId = Date.now().toString();
   players[playerId] = { x: 100, y: 100, color: getRandomColor(), health: 100, alive: true };
 
-  socket.emit("init", { id: playerId, players, bullets });
-  io.emit("update", { players, bullets });
+  ws.send(JSON.stringify({ type: "init", id: playerId, players, bullets }));
 
-  socket.on("move", (data) => {
-    if (players[playerId]?.alive) {
+  ws.on("message", (message) => {
+    const data = JSON.parse(message);
+
+    if (!players[playerId]?.alive) return;
+
+    if (data.type === "move") {
       players[playerId].x = data.x;
       players[playerId].y = data.y;
     }
+
+    if (data.type === "shoot") {
+      bullets.push({
+        x: data.x,
+        y: data.y,
+        dx: data.dx,
+        dy: data.dy,
+        owner: playerId
+      });
+    }
   });
 
-  socket.on("shoot", (data) => {
-    bullets.push({
-      x: data.x,
-      y: data.y,
-      dx: data.dx,
-      dy: data.dy,
-      owner: playerId
-    });
-  });
-
-  socket.on("disconnect", () => {
+  ws.on("close", () => {
     delete players[playerId];
-    io.emit("update", { players, bullets });
   });
 });
 
@@ -68,9 +68,12 @@ setInterval(() => {
     }
   });
 
-  io.emit("update", { players, bullets });
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({ type: "update", players, bullets }));
+    }
+  });
 }, 30);
 
-server.listen(8080, () => {
-  console.log("Server running on port 8080");
-});
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
