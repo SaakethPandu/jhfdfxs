@@ -1,4 +1,5 @@
-import { Server } from "socket.io";
+const { Server } = require("socket.io");
+
 
 let players = {};
 let bullets = [];
@@ -75,3 +76,4 @@ export default function handler(req, res) {
   }
   res.end();
 }
+
