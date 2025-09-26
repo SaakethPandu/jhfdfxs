@@ -1,7 +1,7 @@
 {
   "name": "multiplayer-shooter",
   "version": "1.0.0",
-  "description": "Multiplayer shooter game",
+  "description": "Multiplayer shooter game with WebSocket using Socket.IO",
   "type": "module",
   "main": "server.js",
   "scripts": {
