@@ -1,108 +1,80 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+// server.js
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Allow all origins for now
+  },
+});
 
-const PORT = process.env.PORT || 3000;
+// Serve static files (optional, if you want to serve client.html directly)
+app.use(express.static("."));
 
-// Serve static client files (put client.html and related files in "public/")
-app.use(express.static("public"));
+const PORT = process.env.PORT || 8080;
 
-// Track players and bullets
+// Game state
 let players = {};
 let bullets = [];
 
-// New player joins
+// Handle socket connections
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  console.log(`Player connected: ${socket.id}`);
 
-  players[socket.id] = {
-    x: 100,
-    y: 100,
-    color: getRandomColor(),
-    health: 100,
-    alive: true,
-  };
+  // Add new player
+  players[socket.id] = { x: 100, y: 100, speed: 5 };
 
-  // Send initial state
-  socket.emit("init", { id: socket.id, players, bullets });
+  // Handle movement
+  socket.on("movement", (keys) => {
+    const player = players[socket.id];
+    if (!player) return;
 
-  // Broadcast to everyone that a new player joined
-  io.emit("update", { players, bullets });
-
-  // Handle player movement
-  socket.on("move", (data) => {
-    if (!players[socket.id]?.alive) return;
-    players[socket.id].x = data.x;
-    players[socket.id].y = data.y;
-    io.emit("update", { players, bullets });
+    if (keys["w"] || keys["ArrowUp"]) player.y -= player.speed;
+    if (keys["s"] || keys["ArrowDown"]) player.y += player.speed;
+    if (keys["a"] || keys["ArrowLeft"]) player.x -= player.speed;
+    if (keys["d"] || keys["ArrowRight"]) player.x += player.speed;
   });
 
   // Handle shooting
-  socket.on("shoot", (data) => {
-    if (!players[socket.id]?.alive) return;
+  socket.on("shoot", (target) => {
+    const player = players[socket.id];
+    if (!player) return;
+
+    const dx = target.x - player.x;
+    const dy = target.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    const speed = 10;
+
     bullets.push({
-      x: data.x,
-      y: data.y,
-      dx: data.dx,
-      dy: data.dy,
-      owner: socket.id,
+      x: player.x + 10,
+      y: player.y + 10,
+      vx: (dx / dist) * speed,
+      vy: (dy / dist) * speed,
     });
   });
 
   // Handle disconnect
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
-    io.emit("update", { players, bullets });
   });
 });
 
-// Game loop for bullets
+// Update loop
 setInterval(() => {
-  bullets.forEach((bullet, index) => {
-    bullet.x += bullet.dx;
-    bullet.y += bullet.dy;
+  // Update bullets
+  for (const bullet of bullets) {
+    bullet.x += bullet.vx;
+    bullet.y += bullet.vy;
+  }
 
-    // Collision with players
-    for (let id in players) {
-      if (id !== bullet.owner && players[id].alive) {
-        let p = players[id];
-        if (
-          bullet.x > p.x &&
-          bullet.x < p.x + 50 &&
-          bullet.y > p.y &&
-          bullet.y < p.y + 50
-        ) {
-          p.health -= 10;
-          if (p.health <= 0) {
-            p.health = 0;
-            p.alive = false;
-          }
-          bullets.splice(index, 1);
-          break;
-        }
-      }
-    }
+  // Send game state to clients
+  io.emit("state", { players, bullets });
+}, 1000 / 30); // 30 FPS
 
-    // Remove off-screen bullets
-    if (bullet.x < 0 || bullet.y < 0 || bullet.x > 2000 || bullet.y > 2000) {
-      bullets.splice(index, 1);
-    }
-  });
-
-  io.emit("update", { players, bullets });
-}, 30);
-
-// Random color generator
-function getRandomColor() {
-  return "#" + Math.floor(Math.random() * 16777215).toString(16);
-}
-
-// Start server
 server.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
