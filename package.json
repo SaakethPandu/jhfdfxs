@@ -1,14 +1,19 @@
 {
-  "name": "multiplayer-2d-game",
+  "name": "multiplayer-shooter",
   "version": "1.0.0",
-  "description": "Simple multiplayer 2D shooting game with Node.js, Express, and Socket.io",
-  "main": "server.js",
+  "description": "Multiplayer shooter game with WebSocket",
   "type": "module",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.18.2",
     "socket.io": "^4.8.1"
-  }
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "author": "Your Name",
+  "license": "MIT"
 }
