@@ -1,80 +1,99 @@
-// server.js
 import express from "express";
-import http from "http";
+import { createServer } from "http";
 import { Server } from "socket.io";
 
 const app = express();
-const server = http.createServer(app);
+const server = createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allow all origins for now
-  },
+    origin: "*", // Allow all origins for testing
+    methods: ["GET", "POST"]
+  }
 });
 
-// Serve static files (optional, if you want to serve client.html directly)
-app.use(express.static("."));
-
-const PORT = process.env.PORT || 8080;
-
-// Game state
 let players = {};
 let bullets = [];
 
-// Handle socket connections
 io.on("connection", (socket) => {
-  console.log(`Player connected: ${socket.id}`);
+  console.log("Player connected:", socket.id);
 
-  // Add new player
-  players[socket.id] = { x: 100, y: 100, speed: 5 };
+  players[socket.id] = {
+    x: 100,
+    y: 100,
+    color: getRandomColor(),
+    health: 100,
+    alive: true
+  };
 
-  // Handle movement
-  socket.on("movement", (keys) => {
-    const player = players[socket.id];
-    if (!player) return;
-
-    if (keys["w"] || keys["ArrowUp"]) player.y -= player.speed;
-    if (keys["s"] || keys["ArrowDown"]) player.y += player.speed;
-    if (keys["a"] || keys["ArrowLeft"]) player.x -= player.speed;
-    if (keys["d"] || keys["ArrowRight"]) player.x += player.speed;
+  // Send init data
+  socket.emit("init", {
+    id: socket.id,
+    players,
+    bullets
   });
 
-  // Handle shooting
-  socket.on("shoot", (target) => {
-    const player = players[socket.id];
-    if (!player) return;
+  io.emit("update", { players, bullets });
 
-    const dx = target.x - player.x;
-    const dy = target.y - player.y;
-    const dist = Math.hypot(dx, dy);
-    const speed = 10;
+  socket.on("move", (data) => {
+    if (!players[socket.id]?.alive) return;
+    players[socket.id].x = data.x;
+    players[socket.id].y = data.y;
+    io.emit("update", { players, bullets });
+  });
 
+  socket.on("shoot", (data) => {
     bullets.push({
-      x: player.x + 10,
-      y: player.y + 10,
-      vx: (dx / dist) * speed,
-      vy: (dy / dist) * speed,
+      x: data.x,
+      y: data.y,
+      dx: data.dx,
+      dy: data.dy,
+      owner: socket.id
     });
+    io.emit("update", { players, bullets });
   });
 
-  // Handle disconnect
   socket.on("disconnect", () => {
-    console.log(`Player disconnected: ${socket.id}`);
+    console.log("Player disconnected:", socket.id);
     delete players[socket.id];
+    io.emit("update", { players, bullets });
   });
 });
 
-// Update loop
+function getRandomColor() {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16);
+}
+
+// Bullet movement loop
 setInterval(() => {
-  // Update bullets
-  for (const bullet of bullets) {
-    bullet.x += bullet.vx;
-    bullet.y += bullet.vy;
-  }
+  bullets.forEach((bullet, index) => {
+    bullet.x += bullet.dx;
+    bullet.y += bullet.dy;
 
-  // Send game state to clients
-  io.emit("state", { players, bullets });
-}, 1000 / 30); // 30 FPS
+    for (let id in players) {
+      if (id !== bullet.owner && players[id].alive) {
+        let p = players[id];
+        if (bullet.x > p.x && bullet.x < p.x + 50 && bullet.y > p.y && bullet.y < p.y + 50) {
+          p.health -= 10;
+          if (p.health <= 0) {
+            p.health = 0;
+            p.alive = false;
+          }
+          bullets.splice(index, 1);
+          break;
+        }
+      }
+    }
 
+    if (bullet.x < 0 || bullet.y < 0 || bullet.x > 2000 || bullet.y > 2000) {
+      bullets.splice(index, 1);
+    }
+  });
+
+  io.emit("update", { players, bullets });
+}, 30);
+
+const PORT = process.env.PORT || 8080; // ✅ Important for Render
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
